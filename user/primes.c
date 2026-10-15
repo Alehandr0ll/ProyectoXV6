@@ -1,6 +1,7 @@
-#include "kernel/types.h"
-#include "kernel/stat.h"
-#include "user/user.h"
+#include "kernel/types.h"//define los tipos de datos básicos y abreviaturas que utiliza el so xv6(enteros sin signo, tamaños etc).
+//el resto de librerias dependen de la de types
+#include "kernel/stat.h"//da la def del struct stat. esta es la que contiene la planilla para almacenar los metadatos
+#include "user/user.h"//contiene las declaraciones de todas las llamadas al sistema.
 
 // Esta funcion termina con exit; no vuelve a quien la llamo.
 void filtrar(int entrada) __attribute__((noreturn));
@@ -14,7 +15,7 @@ filtrar(int entrada)
     int leidos = read(entrada, &primo, sizeof(primo)); //leidos es la cantidad de bytes leidos
 
     // Caso base: sin un primer numero, no creamos mas procesos.
-    if (leidos == 0) {
+    if (leidos == 0) {//el proceso anterior cerro su tuberia porque ya no hay mas numeros que evaluar
         close(entrada);
         exit(0);
     }
@@ -27,14 +28,14 @@ filtrar(int entrada)
     printf("prime %d\n", primo); //marcamos primo encontrado
 
     // Este pipe conecta ESTE filtro con el siguiente filtro.
-    int siguiente[2];
-    if (pipe(siguiente) < 0) {
+    int siguiente[2];//crea una nueva pipe llamada siguiente, 0 para que el futuro hijo lea y 1 para que el proceso actual escriba
+    if (pipe(siguiente) < 0) {//filtro para ver si se creo la pipe, pipe(siguiente) siempre returna un entero positivo
         fprintf(2, "Error al crear pipe\n");
         close(entrada);
         exit(1);
     }
 
-    int pid = fork();
+    int pid = fork();//vuelve a clonar el proceso actual dividiendo la ejecucion en 2 
     if (pid < 0) { //error al crear hijo
         fprintf(2, "Error al crear hijo\n");
         close(entrada);
@@ -45,7 +46,7 @@ filtrar(int entrada)
 
     if (pid == 0) {
         // HIJO: solo lee del nuevo pipe.
-        close(siguiente[1]);
+        close(siguiente[1]);//cierra su escritura
         // La entrada anterior le corresponde al padre.
         close(entrada);
         // Recursion: el nuevo proceso se encarga del siguiente primo.
@@ -91,14 +92,16 @@ int
 main(void)
 {
     int p[2];
-    if (pipe(p) < 0) {
+    if (pipe(p) < 0) {//se crea la primera tuberia(pipe) p[0] sera donde se lee y p[1] para escribir
         fprintf(2, "Error al crear pipe inicial\n");
         exit(1);
     }
 
+
+    //fork llama al sistema operativo que toma el proceso actual (padre) y crea una copia exacta en la memoria (proceso hijo), tienen las mismas variables y mismas tuberias abiertas
     // El pipe existe antes de fork: el hijo hereda sus descriptores.
-    int pid = fork();
-    if (pid < 0) {
+    int pid = fork();//el programa se clona y la ejecucion se divide en dos caminos paralelos.
+    if (pid < 0) {//pid identificador de procesos
         fprintf(2, "Error al crear primer hijo\n");
         close(p[0]);
         close(p[1]);
@@ -110,7 +113,8 @@ main(void)
         close(p[0]);
         for (int i = 2; i <= 35; i++) {
             // Enviamos los bytes del entero, usando su direccion y tamaño, y revisando por si hay error.
-            if (write(p[1], &i, sizeof(i)) != sizeof(i)) {
+            if (write(p[1], &i, sizeof(i)) != sizeof(i)) {//toma el numero act del ciclo, busca su direccion en memoria &i, y calcula su tamaño en bytes e inyecta los bytes por el extremo de escritura de la tuberiap[1],
+                //para que viajen al proceso hijo
                 fprintf(2, "No se pudo enviar el numero\n");
                 close(p[1]);
                 wait(0);
