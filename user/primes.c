@@ -9,11 +9,13 @@ void filtrar(int entrada) __attribute__((noreturn));
 void
 filtrar(int entrada)
 {
-    int primo;
+  int primo;
 
-    // Leemos un entero desde la entrada.
-    int leidos = read(entrada, &primo, sizeof(primo)); //leidos es la cantidad de bytes leidos
+  // Leemos un entero desde la entrada.
+  int leidos = read(entrada, &primo,
+                    sizeof(primo)); //leidos es la cantidad de bytes leidos
 
+<<<<<<< HEAD
     // Caso base: sin un primer numero, no creamos mas procesos.
     if (leidos == 0) {//el proceso anterior cerro su tuberia porque ya no hay mas numeros que evaluar
         close(entrada);
@@ -24,9 +26,22 @@ filtrar(int entrada)
         close(entrada);
         exit(1);
     }
+=======
+  // Caso base: sin un primer numero, no creamos mas procesos.
+  if (leidos == 0) {
+    close(entrada);
+    exit(0);
+  }
+  if (leidos != sizeof(primo)) {
+    fprintf(2, "Error al leer el primo\n");
+    close(entrada);
+    exit(1);
+  }
+>>>>>>> 477fe8c049c93d647af59277c3f762acf6dd9ae0
 
-    printf("prime %d\n", primo); //marcamos primo encontrado
+  printf("prime %d\n", primo); //marcamos primo encontrado
 
+<<<<<<< HEAD
     // Este pipe conecta ESTE filtro con el siguiente filtro.
     int siguiente[2];//crea una nueva pipe llamada siguiente, 0 para que el futuro hijo lea y 1 para que el proceso actual escriba
     if (pipe(siguiente) < 0) {//filtro para ver si se creo la pipe, pipe(siguiente) siempre returna un entero positivo
@@ -54,43 +69,74 @@ filtrar(int entrada)
     } else {
         // PADRE: lee de entrada y escribe hacia el siguiente filtro.
         close(siguiente[0]);
+=======
+  // Este pipe conecta ESTE filtro con el siguiente filtro.
+  int siguiente[2];
+  if (pipe(siguiente) < 0) {
+    fprintf(2, "Error al crear pipe\n");
+    close(entrada);
+    exit(1);
+  }
 
-        int numero;
-        while ((leidos = read(entrada, &numero, sizeof(numero))) == sizeof(numero)) {
-            //Comprobar si NO es multiplo de primo usando %.
-            if (numero % primo != 0){
-                //enviamos al hijo, chekeando por si hay error en el envio.
-                if (write(siguiente[1], &numero, sizeof(numero)) != sizeof(numero)) {
-                    fprintf(2, "No se pudo enviar el numero\n");
-                    close(entrada);
-                    close(siguiente[1]);
-                    wait(0);
-                    exit(1);
-                }
-            }
-            //si es divisible, no lo mandamos
+  int pid = fork();
+  if (pid < 0) { //error al crear hijo
+    fprintf(2, "Error al crear hijo\n");
+    close(entrada);
+    close(siguiente[0]);
+    close(siguiente[1]);
+    exit(1);
+  }
+
+  if (pid == 0) {
+    // HIJO: solo lee del nuevo pipe.
+    close(siguiente[1]);
+    // La entrada anterior le corresponde al padre.
+    close(entrada);
+    // Recursion: el nuevo proceso se encarga del siguiente primo.
+    filtrar(siguiente[0]);
+  } else {
+    // PADRE: lee de entrada y escribe hacia el siguiente filtro.
+    close(siguiente[0]);
+>>>>>>> 477fe8c049c93d647af59277c3f762acf6dd9ae0
+
+    int numero;
+    while ((leidos = read(entrada, &numero, sizeof(numero))) ==
+           sizeof(numero)) {
+      //Comprobar si NO es multiplo de primo usando %.
+      if (numero % primo != 0) {
+        //enviamos al hijo, chekeando por si hay error en el envio.
+        if (write(siguiente[1], &numero, sizeof(numero)) != sizeof(numero)) {
+          fprintf(2, "No se pudo enviar el numero\n");
+          close(entrada);
+          close(siguiente[1]);
+          wait(0);
+          exit(1);
         }
-
-        // Solo 0 indica fin de datos.
-        if (leidos != 0) {
-            fprintf(2, "Error al leer el numero\n");
-            close(entrada);
-            close(siguiente[1]);
-            wait(0);
-            exit(1);
-        }
-
-        close(entrada);
-        // Cerrar ANTES de esperar: el hijo necesita recibir fin de datos.
-        close(siguiente[1]);
-        wait(0);
-        exit(0);
+      }
+      //si es divisible, no lo mandamos
     }
+
+    // Solo 0 indica fin de datos.
+    if (leidos != 0) {
+      fprintf(2, "Error al leer el numero\n");
+      close(entrada);
+      close(siguiente[1]);
+      wait(0);
+      exit(1);
+    }
+
+    close(entrada);
+    // Cerrar ANTES de esperar: el hijo necesita recibir fin de datos.
+    close(siguiente[1]);
+    wait(0);
+    exit(0);
+  }
 }
 
 int
 main(void)
 {
+<<<<<<< HEAD
     int p[2];
     if (pipe(p) < 0) {//se crea la primera tuberia(pipe) p[0] sera donde se lee y p[1] para escribir
         fprintf(2, "Error al crear pipe inicial\n");
@@ -121,12 +167,41 @@ main(void)
                 exit(1);
             }
         }
+=======
+  int p[2];
+  if (pipe(p) < 0) {
+    fprintf(2, "Error al crear pipe inicial\n");
+    exit(1);
+  }
+
+  // El pipe existe antes de fork: el hijo hereda sus descriptores.
+  int pid = fork();
+  if (pid < 0) {
+    fprintf(2, "Error al crear primer hijo\n");
+    close(p[0]);
+    close(p[1]);
+    exit(1);
+  }
+
+  if (pid > 0) {
+    // PADRE INICIAL: genera numeros; no filtra ninguno.
+    close(p[0]);
+    for (int i = 2; i <= 35; i++) {
+      // Enviamos los bytes del entero, usando su direccion y tamaño, y revisando por si hay error.
+      if (write(p[1], &i, sizeof(i)) != sizeof(i)) {
+        fprintf(2, "No se pudo enviar el numero\n");
+>>>>>>> 477fe8c049c93d647af59277c3f762acf6dd9ae0
         close(p[1]);
         wait(0);
-        exit(0);
-    } else {
-        // PRIMER HIJO: inicia la cadena de filtros.
-        close(p[1]);
-        filtrar(p[0]);
+        exit(1);
+      }
     }
+    close(p[1]);
+    wait(0);
+    exit(0);
+  } else {
+    // PRIMER HIJO: inicia la cadena de filtros.
+    close(p[1]);
+    filtrar(p[0]);
+  }
 }
