@@ -1,9 +1,9 @@
-#include "kernel/types.h"//define los tipos de datos básicos y abreviaturas que utiliza el so xv6(enteros sin signo, tamaños etc).
+#include "kernel/types.h" //define los tipos de datos básicos y abreviaturas que utiliza el so xv6(enteros sin signo, tamaños etc).
 //el resto de librerias dependen de la de types
-#include "kernel/stat.h"//da la def del struct stat. esta es la que contiene la planilla para almacenar los metadatos de los archivos(inodo, tamaño, tipo)
+#include "kernel/stat.h" //da la def del struct stat. esta es la que contiene la planilla para almacenar los metadatos de los archivos(inodo, tamaño, tipo)
 //es la que nos da el tipo de de archivo (T_DIR: directorios, T_FILE: archivos normales, T_DEVICE: para dispositivos)
-#include "user/user.h"//contiene las declaraciones de todas las llamadas al sistema (open, read, write, close, pipe, fork y wait)
-#include "kernel/fs.h"//esta sirve para interactuar con el sistema de archivos
+#include "user/user.h" //contiene las declaraciones de todas las llamadas al sistema (open, read, write, close, pipe, fork y wait)
+#include "kernel/fs.h" //esta sirve para interactuar con el sistema de archivos
 
 // Buscamos el archivo 'objetivo' a partir de 'path', en caso de
 // no encontrarlo "inmediatamente" aplicamos recursión para entrar a las
@@ -20,13 +20,13 @@ find(char *path, char *archivo_buscado)
   // Abrimos la ruta, 0 es solo lectura.
   if ((fd = open(path, 0)) < 0) {
     fprintf(2, "find: no se pudo abrir %s\n", path);
-    return;//verifica si se pudo abrir
+    return; //verifica si se pudo abrir
   }
 
   // Pedimos los datos y se los damos a la variable
   if (fstat(fd, &info_base) < 0) {
     fprintf(2, "find: no se pudo hacer fstat de %s\n", path);
-    close(fd);//si da error manda numero negativo
+    close(fd); //si da error manda numero negativo
     return;
   }
 

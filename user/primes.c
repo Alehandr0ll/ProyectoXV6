@@ -1,7 +1,7 @@
-#include "kernel/types.h"//define los tipos de datos básicos y abreviaturas que utiliza el so xv6(enteros sin signo, tamaños etc).
+#include "kernel/types.h" //define los tipos de datos básicos y abreviaturas que utiliza el so xv6(enteros sin signo, tamaños etc).
 //el resto de librerias dependen de la de types
-#include "kernel/stat.h"//da la def del struct stat. esta es la que contiene la planilla para almacenar los metadatos
-#include "user/user.h"//contiene las declaraciones de todas las llamadas al sistema.
+#include "kernel/stat.h" //da la def del struct stat. esta es la que contiene la planilla para almacenar los metadatos
+#include "user/user.h" //contiene las declaraciones de todas las llamadas al sistema.
 
 // Esta funcion termina con exit; no vuelve a quien la llamo.
 void filtrar(int entrada) __attribute__((noreturn));
