@@ -367,6 +367,16 @@ copyout(pagetable_t pagetable, uint64 psz, uint64 dstva, char *src, uint64 len)
     }
 
     pte = walk(pagetable, va0, 0);
+
+    // Requerimiento C: el kernel tampoco puede escribir directo en una
+    // página COW (p. ej. read() o wait() sobre un buffer compartido);
+    // primero se le da al proceso su propia copia.
+    if (*pte & PTE_COW) {
+      if (cowfault(pagetable, va0) != 0)
+        return -1;
+      pa0 = PTE2PA(*pte);
+    }
+
     // forbid copyout over read-only user text pages.
     if ((*pte & PTE_W) == 0)
       return -1;
@@ -494,5 +504,54 @@ ismapped(pagetable_t pagetable, uint64 va)
   if (*pte & PTE_V) {
     return 1;
   }
+  return 0;
+}
+
+// Requerimiento C: resolver una escritura sobre una página Copy-on-Write.
+// Se llama desde usertrap() ante un fallo de página por escritura y desde
+// copyout() cuando el kernel va a escribir en memoria del usuario.
+// Le entrega al proceso su propia copia de la página, con permiso de
+// escritura, y descuenta una referencia de la página original.
+// Retorna 0 si se resolvió, o -1 si va no es una página COW de usuario
+// o si no queda memoria física.
+int
+cowfault(pagetable_t pagetable, uint64 va)
+{
+  pte_t *pte;
+  uint64 pa;
+  uint flags;
+  char *mem;
+
+  if (va >= MAXVA)
+    return -1;
+  va = PGROUNDDOWN(va);
+
+  // Solo se atienden páginas de usuario válidas marcadas como COW;
+  // una escritura sobre una página de solo lectura normal (p. ej. el
+  // código del programa) sigue siendo un error.
+  if ((pte = walk(pagetable, va, 0)) == 0)
+    return -1;
+  if ((*pte & PTE_V) == 0 || (*pte & PTE_U) == 0 || (*pte & PTE_COW) == 0)
+    return -1;
+
+  pa = PTE2PA(*pte);
+  // La página vuelve a ser escribible y deja de ser COW.
+  flags = (PTE_FLAGS(*pte) & ~PTE_COW) | PTE_W;
+
+  // Si este proceso es el único que aún usa la página (los demás ya
+  // hicieron su copia o terminaron), no hace falta copiarla.
+  if (krefcount((void *)pa) == 1) {
+    *pte = PA2PTE(pa) | flags;
+    return 0;
+  }
+
+  // Página nueva, copia del contenido y el proceso pasa a apuntar a ella.
+  if ((mem = kalloc()) == 0)
+    return -1;
+  memmove(mem, (char *)pa, PGSIZE);
+  *pte = PA2PTE(mem) | flags;
+
+  // Este proceso ya no usa la página original.
+  kfree((void *)pa);
   return 0;
 }
