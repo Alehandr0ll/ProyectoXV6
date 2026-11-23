@@ -289,10 +289,10 @@ uvmfree(pagetable_t pagetable, uint64 sz)
   freewalk(pagetable);
 }
 
-// Given a parent process's page table, copy
-// its memory into a child's page table.
-// Copies both the page table and the
-// physical memory.
+// Given a parent process's page table, map its memory
+// into a child's page table using Copy-on-Write:
+// the child points to the same physical pages as the parent,
+// and no physical memory is copied.
 // returns 0 on success, -1 on failure.
 // frees any allocated pages on failure.
 int
@@ -301,7 +301,6 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
 
   for (i = 0; i < sz; i += PGSIZE) {
     if ((pte = walk(old, i, 0)) == 0)
@@ -309,14 +308,22 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if ((*pte & PTE_V) == 0)
       continue; // physical page hasn't been allocated
     pa = PTE2PA(*pte);
+
+    // Requerimiento A: las páginas escribibles pasan a ser COW.
+    // Se les quita PTE_W en el padre (y, al copiar los flags, también
+    // en el hijo) y se marcan con PTE_COW para distinguirlas de las
+    // páginas de solo lectura normales (p. ej. el código), que se
+    // comparten tal cual.
+    if (*pte & PTE_W)
+      *pte = (*pte & ~PTE_W) | PTE_COW;
     flags = PTE_FLAGS(*pte);
-    if ((mem = kalloc()) == 0)
+
+    // El hijo apunta a la misma página física que el padre.
+    if (mappages(new, i, PGSIZE, pa, flags) != 0)
       goto err;
-    memmove(mem, (char *)pa, PGSIZE);
-    if (mappages(new, i, PGSIZE, (uint64)mem, flags) != 0) {
-      kfree(mem);
-      goto err;
-    }
+
+    // Requerimiento B: ahora hay un proceso más usando la página.
+    krefinc((void *)pa);
   }
   return 0;
 
@@ -360,6 +367,16 @@ copyout(pagetable_t pagetable, uint64 psz, uint64 dstva, char *src, uint64 len)
     }
 
     pte = walk(pagetable, va0, 0);
+
+    // Requerimiento C: el kernel tampoco puede escribir directo en una
+    // página COW (p. ej. read() o wait() sobre un buffer compartido);
+    // primero se le da al proceso su propia copia.
+    if (*pte & PTE_COW) {
+      if (cowfault(pagetable, va0) != 0)
+        return -1;
+      pa0 = PTE2PA(*pte);
+    }
+
     // forbid copyout over read-only user text pages.
     if ((*pte & PTE_W) == 0)
       return -1;
@@ -487,5 +504,54 @@ ismapped(pagetable_t pagetable, uint64 va)
   if (*pte & PTE_V) {
     return 1;
   }
+  return 0;
+}
+
+// Requerimiento C: resolver una escritura sobre una página Copy-on-Write.
+// Se llama desde usertrap() ante un fallo de página por escritura y desde
+// copyout() cuando el kernel va a escribir en memoria del usuario.
+// Le entrega al proceso su propia copia de la página, con permiso de
+// escritura, y descuenta una referencia de la página original.
+// Retorna 0 si se resolvió, o -1 si va no es una página COW de usuario
+// o si no queda memoria física.
+int
+cowfault(pagetable_t pagetable, uint64 va)
+{
+  pte_t *pte;
+  uint64 pa;
+  uint flags;
+  char *mem;
+
+  if (va >= MAXVA)
+    return -1;
+  va = PGROUNDDOWN(va);
+
+  // Solo se atienden páginas de usuario válidas marcadas como COW;
+  // una escritura sobre una página de solo lectura normal (p. ej. el
+  // código del programa) sigue siendo un error.
+  if ((pte = walk(pagetable, va, 0)) == 0)
+    return -1;
+  if ((*pte & PTE_V) == 0 || (*pte & PTE_U) == 0 || (*pte & PTE_COW) == 0)
+    return -1;
+
+  pa = PTE2PA(*pte);
+  // La página vuelve a ser escribible y deja de ser COW.
+  flags = (PTE_FLAGS(*pte) & ~PTE_COW) | PTE_W;
+
+  // Si este proceso es el único que aún usa la página (los demás ya
+  // hicieron su copia o terminaron), no hace falta copiarla.
+  if (krefcount((void *)pa) == 1) {
+    *pte = PA2PTE(pa) | flags;
+    return 0;
+  }
+
+  // Página nueva, copia del contenido y el proceso pasa a apuntar a ella.
+  if ((mem = kalloc()) == 0)
+    return -1;
+  memmove(mem, (char *)pa, PGSIZE);
+  *pte = PA2PTE(mem) | flags;
+
+  // Este proceso ya no usa la página original.
+  kfree((void *)pa);
   return 0;
 }
